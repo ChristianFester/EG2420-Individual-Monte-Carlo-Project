@@ -13,7 +13,7 @@ for ii = 1:4
         [magical_strength,wisdom,met_friend] ...
             = get_clue(var,ii,magical_strength,wisdom,met_friend);
     else 
-        var.get_clue{ii} = "None";
+        var.get_clue{ii} = 'None';
     end
     if print == 1
         magical_strengths = [magical_strengths; magical_strength];
@@ -77,14 +77,14 @@ end
 function print_result(magical_strengths, wisdoms, met_friends,portal_open,var)
 
 y_clue = var.y_clue;
-y_clue_type = var.y_clue_type;
+y_clue_type = var.y_clue_type';
 y_trap = var.y_trap;
 trap_avoid = var.y_trap_avoid.*wisdoms(2:end);
 y_scroll = var.y_scroll_add;
 y_book = var.y_book_add;
 y_artefact = var.y_artefact_add;
 
-get_clue = [{''};var.get_clue];
+get_clue = [{''},var.get_clue]';
 
 inputs = table(y_clue, y_clue_type,y_trap, trap_avoid, y_scroll, y_book,y_artefact)
 algorithm = table(get_clue,magical_strengths, wisdoms, met_friends)

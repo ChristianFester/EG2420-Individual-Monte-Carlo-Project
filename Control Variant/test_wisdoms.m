@@ -5,10 +5,9 @@ print = 0;
 f = waitbar(0,'Please wait...');
 
 
-
 % Test different wisdoms
 step = 0.1;
-samples = 200;
+samples = 1000;
 wisdoms_test = 0:step:100;
 
 
@@ -50,6 +49,10 @@ fplot(magical_fit,'r-.','LineWidth',2,'DisplayName','Fit magical');
 fplot(wisdom_fit,'b-.','LineWidth',2,'DisplayName','Fit wisdom');
 legend('Location','northwest')
 xlim([0,100])
+grid on
+xlabel('Inital Wisdom Attribute')
+ylabel('Attribute Increase During Preparatory Phase')
+saveas(fig,'WisdomFit.png')
 
 figure(2); clf
 n = ceil(length(wisdoms_test)/50);
