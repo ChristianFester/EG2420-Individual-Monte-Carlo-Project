@@ -1,16 +1,26 @@
 clear all
+addpath 'Complementary Random Numbers'\
+addpath 'Control Variant'\
+addpath 'Importance Sampeling'\
+addpath 'Simpel Sampeling'\
+addpath 'Stratified Sampeling'\
+addpath 'Stratified Sampeling'\'Fast'\
 load_settings;
 
-simulations = 200;
-samples_per_simulation = 1000;
+simulations = 100;
+samples_per_simulation = 1200;
+%Share of samples used for the pilot study
+strata_pilot = 0.34; 
 
-
+%% 
+res = struct;
 for ii = 1:length(mages)
     f = waitbar(0,['Simulation mage ' num2str(ii) '...'],'Name','Monte Carlo Simulation');
 
-    wisdom = mages(ii).wisdom
-    magic = mages(ii).magical_strength
-    
+    wisdom = mages(ii).wisdom;
+    magic = mages(ii).magical_strength;
+    fprintf('Mage %i: %i Wisdom and %i Magical Strength',ii,wisdom,magic)
+
     % Vectors to save results
     % Estimated mean
     mX_simplesampling = zeros(simulations,1);
@@ -18,187 +28,177 @@ for ii = 1:length(mages)
     mX_controlvariant = zeros(simulations,1);
     mX_importance = zeros(simulations,1);
     mX_stratified = zeros(simulations,1);
-    
+
     % Simulation Time
     time_simplesampling = zeros(simulations,1);
     time_complementary = zeros(simulations,1);
     time_controlvariant = zeros(simulations,1);
     time_importance = zeros(simulations,1);
     time_stratified = zeros(simulations,1);
-
+    
+    std0s =0;
     for nn = 1:simulations
+        idx_rnd = (ii-1)*simulations+nn;
         waitbar(nn/simulations,f,['Simulation mage ' num2str(ii) '...']);
 
         %% Simple Sampling
-        rng(nn,'twister'); % Seed for random number generator
-        tstart = tic;
+        rng(idx_rnd,'twister'); % Seed for random number generator
+                
+        [mX,time] = simplesampling(magic,wisdom,samples_per_simulation);
 
-        X = zeros(samples_per_simulation,1);
-        for kk = 1:samples_per_simulation
-            u = rand(29,1);
-            variables = get_random_variable(u);
-            portal_open = magic_portal(wisdom, magic, variables);
-            X(kk) = portal_open;
-        end
-
-        mX_simplesampling(nn) = mean(X);
-        time_simplesampling(nn) = toc(tstart);
-
+        mX_simplesampling(nn) = mX;
+        time_simplesampling(nn) = time;
 
 
         %% Complementary random numbers
-        rng(nn,'twister'); % Seed for random number generator
-        tstart = tic;
+        rng(idx_rnd,'twister'); % Seed for random number generator
+        
+        [mX,time] = complementary_numbers(magic,wisdom,samples_per_simulation);
 
-        X = zeros(samples_per_simulation,1);
-        for kk = 1:2:samples_per_simulation
-            u = rand(29,1);
-            variables = get_random_variable(u);
-            portal_open = magic_portal( wisdom,magic,variables);
-            X(kk) = portal_open;
-            
-            % Complementary
-            u_ = u;
-            u_(29) = 1 - u(29);
-            variables_ = get_random_variable(u_);
-            portal_open = magic_portal( wisdom,magic,variables_);
-            X(kk+1) = portal_open;
-        end
-
-        mX_complementary(nn) = mean(X);
-        time_complementary(nn) = toc(tstart);
-    
-
+        mX_complementary(nn) = mX;
+        time_complementary(nn) = time;
 
 
         %% Control Variant
-        rng(nn,'twister'); % Seed for random number generator
-        tstart = tic;
+        rng(idx_rnd,'twister'); % Seed for random number generator
+        
+        [mX,time] = control_variant(magic,wisdom,samples_per_simulation);
 
-        % Find expectation result of the simplified model
-        add_magical = 0.2635*wisdom -0.32732;
-        mu_simple = (magic+add_magical) / 100;
-    
-        X = zeros(samples_per_simulation,1);
-        X_simple = zeros(samples_per_simulation,1);
-        for kk = 1:samples_per_simulation
-            u = rand(29,1);
-            variables = get_random_variable(u);
-            % Normal Model
-            portal_open = magic_portal(wisdom,magic, variables);
-            X(kk) = portal_open;
-            % Simple Model
-            sportal_open = magic_portal_simple(wisdom,magic,variables);
-            X_simple(kk) = sportal_open;
-        end
-
-        mX_controlvariant(nn) = mean(X)-mean(X_simple) + mu_simple;
-        time_controlvariant(nn) = toc(tstart);
+        mX_controlvariant(nn) = mX;
+        time_controlvariant(nn) = time;
 
 
         %% Importance Sampling
-        rng(nn,'twister'); % Seed for random number generator
-        tstart = tic;
-
-        p_magic_add=0.15; % add to old prob
+        rng(idx_rnd,'twister'); % Seed for random number generator
         
-        X = zeros(samples_per_simulation,1);
-        for kk = 1:samples_per_simulation
-            u = rand(29,1);
-
-            %Importance Sampeling
-            p_magic_new = magic/100 + p_magic_add;
-            [variables,w] = get_random_variable_imp_func2(u,magic,p_magic_new);
-            portal_open = magic_portal(wisdom,magic,variables);
-            X(kk) = portal_open*w;
-        end
-
-        mX_importance(nn) = mean(X);
-        time_importance(nn) = toc(tstart);
+        [mX,time] = importance_sampling(magic,wisdom,samples_per_simulation);
+        
+        mX_importance(nn) = mX;
+        time_importance(nn) = time;
 
 
         %% Stratified Sampeling
-        rng(nn,'twister'); % Seed for random number generator
-        tstart = tic;
-
-        strata = ["A","B","C","D","E","F","G","H"]';
-        strata_EX1 = ["A","C","F"]';
-        strata_EX0 = ["B"]';
-        strata_duo = ["D","E","G","H"]';
-
-        % Take 10% of the samples for the pilot study
-        samples_pilot = ceil(0.1*samples_per_simulation/length(strata_duo));
-
-        StdX_pilot = zeros(length(strata_duo),1);
-        strata_weigths = zeros(length(strata_duo),1);
-        X_pilot = {};
-
-        for jj = 1:length(strata_duo)
-            stratum = strata_duo(jj);
-            samples_stratum = samples_pilot;
-
-            X = [];
-            for kk = 1:samples_stratum
-                u = rand(29,1);
-                variables = get_stratum_variable(u,wisdom,magic,stratum);
-                portal_open = magic_portal( wisdom, magic, variables);
-                X = [X,portal_open];
-            end
-            X_pilot(nn) = {X};
-            STDs_pilot(jj) = std(X);
-            strata_weigths(jj) = get_stratum_weight(wisdom,magic,stratum);
-        end
-
-        % Calculate best sample allocation - Neyman allocation
-        n_sample_best = samples_per_simulation*(STDs_pilot.*strata_weigths)/sum(STDs_pilot.*strata_weigths); 
-        samples_left = samples_per_simulation-samples_pilot*length(strata_duo);
-
-        add_samples_float = max(n_sample_best,samples_pilot)-samples_pilot;
-        add_samples = round(add_samples_float/sum(add_samples_float)*samples_left);
+        rng(idx_rnd,'twister'); % Seed for random number generator
         
-        EX_strata = zeros(length(strata_duo),1);
-        for jj = 1:length(strata_duo)
-            stratum = strata_duo(jj);
-            samples_stratum_add = add_samples(jj);
+        [mX,time,std0] = stratified_sampling_fast(magic,wisdom,samples_per_simulation,strata_pilot,false);
 
-            X = [];
-            for kk = 1:samples_stratum_add
-                u = rand(29,1);
-                variables = get_stratum_variable(u,wisdom,magic,stratum);
-                portal_open = magic_portal(wisdom,magic,variables);
-                X = [X,portal_open];
-            end
-            X = [X,X_pilot{nn}];
-            EX_strata(jj) = mean(X);
-        end
-        % Get weight for strata with EX=1
-        weigth_EX1 = 0;
-        for stratum = strata_EX1'
-            weigth_EX1 = weigth_EX1 + get_stratum_weight(wisdom,magic,stratum);
-        end
-            
-        mX_stratified(nn) = sum(EX_strata.*strata_weigths)+1*weigth_EX1;
-        time_stratified(nn) = toc(tstart);
+        mX_stratified(nn) = mX;
+        time_stratified(nn) = time;
+        std0s = std0s + std0;
     
     end % End simulation loop
+    fprintf('Mage %i had %i STD=0 after the pilot study.\n',ii,std0s)
+    % Save the results
+    res(ii).all_times = [time_simplesampling,time_complementary,time_controlvariant,time_importance,time_stratified];
+    res(ii).all_results = 100*[mX_simplesampling,mX_complementary,mX_controlvariant,mX_importance,mX_stratified];
     
-    method = ["Simple Sampling";"Complementary Random Numbers";"Control Variant";"Importance Sampling";"Stratified Sampling"];
-    
-    all_times = [time_simplesampling,time_complementary,time_controlvariant,time_importance,time_stratified];
-    avg_time_ms = 1000*mean(all_times)';
-    
-    all_results = 100*[mX_simplesampling,mX_complementary,mX_controlvariant,mX_importance,mX_stratified];
-    mX_min = min(all_results)';
-    mX_mean = mean(all_results)';
-    mX_max = max(all_results)';
-    Var = var(all_results)';
-    Eff = avg_time_ms.*Var;
-    
-    data = reshape([method,avg_time_ms,mX_min,mX_mean,mX_max,Var,Eff]',1,[]);
-    fprintf(sprintf('%s & %.2f ms & %.2f & %.2f & %.2f & %.4f & %.2f\\\\\\\\ \n',data));
-
-    T = table(method,avg_time_ms,mX_min,mX_mean,mX_max,Var,Eff)
-    sheet = ['w' num2str(wisdom) 'm' num2str(magic)];
-    writetable(T,'Results.xls','Sheet',sheet);
     close(f)
 end % End mage loop
+
+%% Analyse of the results
+time_pre_cv = 1.6369*1000/3;
+method = [
+    "Simple Sampling";
+    "Complementary Numbers";
+    "Control Variant";
+    "Importance Sampling";
+    "Stratified Sampling"];
+
+lgd = struct;
+lgd.first = 'northeast';
+lgd.second = 'none';
+
+for ii = 1:length(mages)
+    all_results = res(ii).all_results;
+    all_times = res(ii).all_times;
+
+    avg_time_ms = 1000*mean(all_times)';
+    % ADD time of precalculation to
+    avg_time_ms(3) = avg_time_ms(3)+time_pre_cv/simulations;
+    mX_min      = min(all_results)';
+    mX_mean     = mean(all_results)';
+    mX_max      = max(all_results)';
+    mX_Var      = var(all_results)';
+    Eff         = avg_time_ms.*mX_Var;
+    
+    name = sprintf('Mage %i',ii);
+    bin_width = .6;
+    plot_histograms(method,all_results,ii,name,bin_width,'normal',lgd)
+
+    data = reshape([method,avg_time_ms,mX_min,mX_mean,mX_max,mX_Var,Eff]',1,[]);
+    fprintf('%s & %.2f ms & %.2f%% & %.2f%% & %.2f%% & %.4f & %.2f\\\\ \n',data);
+
+    T = table(method,avg_time_ms,mX_min,mX_mean,mX_max,mX_Var,Eff)
+    sheet = ['w' num2str(wisdom) 'm' num2str(magic)];
+    writetable(T,'Results.xls','Sheet',sheet);
+    res(ii).T = T;
+end
+
+%% Comparison between mages
+% % To compare these with the results of correlated sampling
+% meanX12 = res(2).T.mX_mean - res(1).T.mX_mean;
+% meanX13 = res(3).T.mX_mean - res(1).T.mX_mean; 
+% meanX23 = res(3).T.mX_mean - res(2).T.mX_mean;
+% 
+% %% MAGE Difference with corelated sampling
+% 
+% mX12_cs = zeros(simulations,1);
+% mX13_cs = zeros(simulations,1);
+% mX23_cs = zeros(simulations,1);
+% mX_stratified = zeros(simulations,1);
+% time_correlatedsampling = zeros(simulations,1);
+% 
+% for nn = 1:simulations
+%     rng(nn,'twister'); % Seed for random number generator
+%     tstart = tic;
+% 
+%     X12 = zeros(samples_per_simulation,1);
+%     X13 = zeros(samples_per_simulation,1);
+%     X23 = zeros(samples_per_simulation,1);
+%     for kk = 1:samples_per_simulation
+%         u = rand(29,1);
+%         variables = get_random_variable(u);
+% 
+%         portal_open_mage = zeros(1,length(mages));
+%         for ii = 1:length(mages)
+%             wisdom = mages(ii).wisdom;
+%             magic = mages(ii).magical_strength;
+% 
+%             portal_open_mage(ii) = magic_portal(wisdom, magic, variables);
+%         end
+%         X12(kk) = portal_open_mage(2)-portal_open_mage(1);
+%         X13(kk) = portal_open_mage(3)-portal_open_mage(1);
+%         X23(kk) = portal_open_mage(3)-portal_open_mage(2);
+%     end
+% 
+%     mX12_cs(nn) = mean(X12);
+%     mX13_cs(nn) = mean(X13);
+%     mX23_cs(nn) = mean(X23);
+%     time_correlatedsampling(nn) = toc(tstart);
+% end
+% all_results = [mX12_cs,mX13_cs,mX23_cs];
+% avg_time_ms = 1000*mean(time_correlatedsampling);
+% 
+% mX_min = min(all_results)'*100;
+% mX_mean = mean(all_results)'*100;
+% mX_max = max(all_results)'*100;
+% mX_Var = var(all_results*100)';
+% 
+% Eff = avg_time_ms*mean(mX_Var)/3;
+% 
+% comparison = ["X2-X1","X3-X1","X3-X2"]';
+% table(comparison,mX_min,mX_mean,mX_max,mX_Var)
+% % data = reshape([comparison,mX_min,mX_mean,mX_max,Var,Eff]',1,[]);
+% % fprintf('%s & %.2f & %.2f & %.2f & %.4f & %.2f\\\\\\\\ \n',data);
+% 
+% 
+% fprintf('Avg. Time: %.2f ms\n',avg_time_ms)
+% fprintf('Mean Variance: %.2f ms\n',mean(mX_Var))
+% fprintf('Efficiency: %.2f ms\n',Eff)
+% 
+% method(end+1) = "Correlated Sampling";
+% meanX12(end+1) = mX_mean(1);
+% meanX13(end+1) = mX_mean(2);
+% meanX23(end+1) = mX_mean(3);
+% 
+% T = table(method,meanX12,meanX13,meanX23)

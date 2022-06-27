@@ -1,8 +1,6 @@
 function [portal_open] = magic_portal_simple(wisdom,magical_strength,var)
 
-% load('ployfit_magical.mat')
-% add_magical = polynominal_magical_fit(1)*wisdom + polynominal_magical_fit(2);
-add_magical = 0.26268*wisdom + -0.32732;
+add_magical = linear_function_magic(wisdom);
 
 magical_strength = magical_strength + add_magical;
 % Action Phase
